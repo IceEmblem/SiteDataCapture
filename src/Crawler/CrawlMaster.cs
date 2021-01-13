@@ -20,9 +20,9 @@
     {
         private CrawlTaskManage _crawlTaskManage { get; set; }
 
-        public CrawlMaster(int threadCount, IEnumerable<string> seedsAddress, CrawlSettings settings)
+        public CrawlMaster(int threadCount, int crawlDepth, IEnumerable<string> seedsAddress, CrawlSettings settings)
         {
-            _crawlTaskManage = new CrawlTaskManage(threadCount);
+            _crawlTaskManage = new CrawlTaskManage(threadCount, crawlDepth);
             foreach (var item in seedsAddress) {
                 _crawlTaskManage.AddNewTask(new DefaultCrawlTask(item, 0, settings));
             }

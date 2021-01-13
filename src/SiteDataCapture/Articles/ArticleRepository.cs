@@ -8,7 +8,7 @@ namespace SiteDataCapture.Articles
 {
     public class ArticleRepository
     {
-        private const string _splitString = "-|-";
+        private const string _splitString = "|-|-|";
 
         private const string _articlesFileName = "Articles.txt";
 
@@ -22,15 +22,14 @@ namespace SiteDataCapture.Articles
 
         public void Insert(Article article) {
             _articles.Add(article);
-            SaveArticlesToFile();
         }
 
-        private void SaveArticlesToFile() {
+        public void SaveArticlesToFile() {
             StringBuilder fileString = new StringBuilder();
             _articles.ForEach(article =>
             {
                 fileString.Append(CreateArticleStr(article));
-                fileString.Append("\n\r");
+                fileString.Append("\n");
             });
 
             File.WriteAllText(_articlesFileName, fileString.ToString());
@@ -67,6 +66,10 @@ namespace SiteDataCapture.Articles
 
         private string CreateArticleStr(Article article) 
         {
+            if (article.ArticleInfos.Count() == 0) {
+                return article.Url;
+            }
+
             return article.Url + _splitString + string.Join(_splitString, article.ArticleInfos);
         }
     }

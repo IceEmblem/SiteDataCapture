@@ -37,13 +37,10 @@ namespace Crawler
             return new DefaultCrawlTask(url, Depth + 1, _crawlSettings);
         }
 
-        public Task<IEnumerable<ICrawlTask>> Run()
+        public IEnumerable<ICrawlTask> Run()
         {
-            return Task.Run(() => {
-                return CrawlProcessHandle();
-            });
+            return CrawlProcessHandle();
         }
-
 
         /// <summary>
         /// 抓取
@@ -71,7 +68,7 @@ namespace Crawler
                 }
                 catch (Exception ex)
                 {
-                    if (_taskFailNum > 4)
+                    if (_taskFailNum > 2)
                     {
                         _crawlSettings.CallCrawlErrorEvent(this, ex);
                         return new ICrawlTask[] { };
@@ -84,45 +81,66 @@ namespace Crawler
 
                 List<ICrawlTask> crawlTasks = new List<ICrawlTask>();
 
-                crawlTasks.AddRange(_crawlSettings.CallDataReceivedEvent(this, requestResult.Html, requestResult.Stream));
+                var urls = ParseLinks(requestResult.Html);
 
-                crawlTasks.AddRange(ParseLinks(requestResult.Html));
+                crawlTasks.AddRange(_crawlSettings.CallDataReceivedEvent(this, requestResult.Html, urls, requestResult.Stream));
+
+                crawlTasks.AddRange(CreateCrawlTasksForUrl(urls));
 
                 return crawlTasks;
             }
         }
 
         /// <summary>
-        /// 解析 links.
+        /// 生成抓取任务
         /// </summary>
-        private IEnumerable<ICrawlTask> ParseLinks(string html)
+        /// <param name="urls"></param>
+        /// <returns></returns>
+        private IEnumerable<ICrawlTask> CreateCrawlTasksForUrl(IEnumerable<string> urls) 
         {
-            if (_crawlSettings.Depth > 0 && Depth >= _crawlSettings.Depth)
+            List<ICrawlTask> crawlTasks = new List<ICrawlTask>();
+
+            foreach (string url in urls) 
             {
-                return new ICrawlTask[] { };
+                var newTask = CreateNextTask(url);
+
+                // 是否抓取
+                if (!_crawlSettings.IsCrawlUrl(url))
+                {
+                    continue;
+                }
+
+                // 如果添加Url事件返回false
+                if (!_crawlSettings.CallAddUrlEvent(newTask))
+                {
+                    continue;
+                }
+
+                crawlTasks.Add(newTask);
             }
 
-            var urlDictionary = new Dictionary<string, string>();
+            return crawlTasks;
+        }
+
+        /// <summary>
+        /// 解析 links.
+        /// </summary>
+        private IEnumerable<string> ParseLinks(string html)
+        {
+            List<string> urls = new List<string>();
 
             Match match = Regex.Match(html, @"(?s)<a.*?href=(""|')(?<href>.*?)(""|').*?>(?<text>.*?)</a>");
             while (match.Success)
             {
-                // 以 href 作为 key
-                string urlKey = match.Groups["href"].Value;
+                urls.Add(match.Groups["href"].Value);
 
-                // 以 text 作为 value
-                string urlValue = Regex.Replace(match.Groups["text"].Value, "(?s)<.*?>", string.Empty);
-
-                urlDictionary[urlKey] = urlValue;
                 match = match.NextMatch();
             }
+            urls.Distinct();
 
-            List<ICrawlTask> crawlTasks = new List<ICrawlTask>();
-            foreach (var item in urlDictionary)
+            List<string> resultUrls = new List<string>();
+            foreach (var href in urls)
             {
-                string href = item.Key;
-                string text = item.Value;
-
                 if (string.IsNullOrEmpty(href))
                 {
                     continue;
@@ -136,7 +154,8 @@ namespace Crawler
                 if (string.IsNullOrEmpty(url)
                     || url.StartsWith("#")
                     || url.StartsWith("mailto:", StringComparison.OrdinalIgnoreCase)
-                    || url.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase))
+                    || url.StartsWith("javascript:", StringComparison.OrdinalIgnoreCase)
+                    || url.StartsWith("thunder:", StringComparison.OrdinalIgnoreCase))
                 {
                     continue;
                 }
@@ -153,22 +172,10 @@ namespace Crawler
                     continue;
                 }
 
-                if (!_crawlSettings.IsCrawlUrl(currentUri.AbsoluteUri)) 
-                {
-                    continue;
-                }
-
-                var newTask = CreateNextTask(currentUri.AbsoluteUri);
-                // 如果添加Url事件返回false
-                if (!_crawlSettings.CallAddUrlEvent(newTask))
-                {
-                    continue;
-                }
-
-                crawlTasks.Add(newTask);
+                resultUrls.Add(currentUri.AbsoluteUri);
             }
 
-            return crawlTasks;
+            return resultUrls;
         }
     }
 }

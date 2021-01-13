@@ -67,7 +67,7 @@ namespace SiteDataCapture
         /// <returns></returns>
         private int GetNextAccessTime() 
         {
-            return (AccessContinueTime / AccessedNum) * 1000;
+            return (AccessContinueTime / AccessNum) * 1000;
         }
 
         /// <summary>

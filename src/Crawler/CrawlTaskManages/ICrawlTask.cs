@@ -15,6 +15,6 @@ namespace Crawler.CrawlTaskManages
 
         ICrawlTask CreateNextTask(string url);
 
-        Task<IEnumerable<ICrawlTask>> Run();
+        IEnumerable<ICrawlTask> Run();
     }
 }

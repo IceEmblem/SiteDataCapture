@@ -12,13 +12,19 @@ namespace SiteDataCapture
 {
     public class ArticleListCrawler
     {
-        public string RootUrl { get; }
+        const string ArticleFileDir = "ArticleFiles";
+
+        static Regex FileNameRegex = new Regex("([^/?]*?)(\\?.*)?$");
+
+        static Regex SrcRegex = new Regex("src=\"(.*?)\"");
 
         public int CrawlerDepth { get; }
 
-        public Regex NextPageUrlMatchRegex { get; }
+        public IEnumerable<string> RootUrls { get; }
 
-        public Regex ArticleUrlMatchRegex { get; }
+        public IEnumerable<Regex> NextPageUrlMatchRegexs { get; }
+
+        public IEnumerable<Regex> ArticleUrlMatchRegexs { get; }
 
         public List<Regex> ArticleInfoMatchRegexs { get; } = new List<Regex>();
 
@@ -26,12 +32,25 @@ namespace SiteDataCapture
 
         private ArticleRepository _articleRepository { get; } = new ArticleRepository();
 
-        public ArticleListCrawler(string rootUrl, int crawlerDepth, Regex nextPageUrlMatchRegex, Regex articleUrlMatchRegex) 
+        public ArticleListCrawler(int crawlerDepth, IEnumerable<string> rootUrls, IEnumerable<Regex> nextPageUrlMatchRegexs, IEnumerable<Regex> articleUrlMatchRegexs) 
         {
-            RootUrl = rootUrl;
             CrawlerDepth = crawlerDepth;
-            NextPageUrlMatchRegex = nextPageUrlMatchRegex;
-            ArticleUrlMatchRegex = articleUrlMatchRegex;
+            if (!rootUrls.Any()) 
+            {
+                throw new Exception("必须输入种子地址");
+            }
+            RootUrls = rootUrls;
+
+            if (!nextPageUrlMatchRegexs.Any())
+            {
+                throw new Exception("必须输入下一页Url匹配正则");
+            }
+            NextPageUrlMatchRegexs = nextPageUrlMatchRegexs;
+
+            if (!articleUrlMatchRegexs.Any()) {
+                throw new Exception("必须输入文章Url匹配正则");
+            }
+            ArticleUrlMatchRegexs = articleUrlMatchRegexs;
         }
 
         /// <summary>
@@ -39,12 +58,13 @@ namespace SiteDataCapture
         /// </summary>
         public void Crawl() {
             CrawlSettings crawlSettings = new CrawlSettings();
-            crawlSettings.RegularFilterExpressions.Add(NextPageUrlMatchRegex);
-            crawlSettings.Depth = CrawlerDepth;
+            crawlSettings.RegularFilterExpressions.AddRange(NextPageUrlMatchRegexs);
             crawlSettings.DataReceivedEvent = CrawlDataReceivedEvent;
 
-            CrawlMaster crawlMaster = new CrawlMaster(10, new string[] { RootUrl }, crawlSettings);
+            CrawlMaster crawlMaster = new CrawlMaster(10, CrawlerDepth, RootUrls, crawlSettings);
             crawlMaster.Crawl();
+
+            _articleRepository.SaveArticlesToFile();
         }
 
         /// <summary>
@@ -55,16 +75,23 @@ namespace SiteDataCapture
             return _articleRepository.Articles.Count();
         }
 
-        protected IEnumerable<ICrawlTask> CrawlDataReceivedEvent(ICrawlTask crawlTask, string html, MemoryStream memoryStream) 
+        protected IEnumerable<ICrawlTask> CrawlDataReceivedEvent(ICrawlTask crawlTask, string html, IEnumerable<string> urls, MemoryStream memoryStream) 
         {
             // 如果任务类型是空的
             if (crawlTask.TaskType == null) {
                 List<ICrawlTask> crawlTasks = new List<ICrawlTask>();
 
-                foreach (var match in ArticleUrlMatchRegex.Matches(html)) {
-                    ICrawlTask newTask = crawlTask.CreateNextTask(match.ToString());
-                    newTask.TaskType = "ArticleUrl";
-                    crawlTasks.Add(newTask);
+                foreach (var ArticleUrlMatchRegex in ArticleUrlMatchRegexs) 
+                {
+                    foreach (string url in urls)
+                    {
+                        if (ArticleUrlMatchRegex.IsMatch(url))
+                        {
+                            ICrawlTask newTask = crawlTask.CreateNextTask(url);
+                            newTask.TaskType = "ArticleUrl";
+                            crawlTasks.Add(newTask);
+                        }
+                    }
                 }
 
                 return crawlTasks;
@@ -77,7 +104,7 @@ namespace SiteDataCapture
                 ArticleInfoMatchRegexs.ForEach(infoMatchRegex =>
                 {
                     foreach (var item in infoMatchRegex.Matches(html)) {
-                        articleInfo.Add(item.ToString());
+                        articleInfo.Add(item.ToString().Replace("\n", "").Replace("\r", ""));
                     }
                 });
 
@@ -88,23 +115,45 @@ namespace SiteDataCapture
                 // 抓取文件
                 List<ICrawlTask> crawlTasks = new List<ICrawlTask>();
 
-                ArticleFileMatchRegexs.ForEach(fileMatchRegex =>
+                var dirNameMatch = FileNameRegex.Match(crawlTask.Url);
+                if (!dirNameMatch.Success)
                 {
-                    foreach (var item in fileMatchRegex.Matches(html))
+                    return new ICrawlTask[] { };
+                }
+
+                foreach (Match srcMatch in SrcRegex.Matches(html)) {
+                    var url = srcMatch.Groups[1].Value;
+                    ArticleFileMatchRegexs.ForEach(fileMatchRegex =>
                     {
-                        ICrawlTask newTask = crawlTask.CreateNextTask(item.ToString());
-                        newTask.TaskType = "FileUrl";
-                        crawlTasks.Add(newTask);
-                    }
-                });
+                        if (fileMatchRegex.IsMatch(url))
+                        {
+                            Uri uri = url.StartsWith("http") ? new Uri("url") : new Uri(new Uri(crawlTask.Url), url);
+                            ICrawlTask newTask = crawlTask.CreateNextTask(uri.AbsoluteUri);
+                            newTask.TaskType = "FileUrl-" + dirNameMatch.Groups[1].Value;
+                            crawlTasks.Add(newTask);
+                        }
+                    });
+                }
 
                 return crawlTasks;
             }
 
             // 如果任务既不是 null 也不是 ArticleUrl，则任务是 FileUrl
-            Uri uri = new Uri(crawlTask.Url);
 
-            File.WriteAllBytes(uri.LocalPath, memoryStream.ToArray());
+            Match match = FileNameRegex.Match(crawlTask.Url);
+
+            if (!match.Success) {
+                return new ICrawlTask[] { };
+            }
+
+            var dirPath = ArticleFileDir + "\\" + crawlTask.TaskType;
+            var filePath = dirPath + "\\" + match.Groups[1].Value;
+
+            if (!Directory.Exists(dirPath)) {
+                Directory.CreateDirectory(dirPath);
+            }
+
+            File.WriteAllBytes(filePath, memoryStream.ToArray());
 
             return new ICrawlTask[] { };
         }

@@ -14,13 +14,24 @@ namespace Crawler.CrawlTaskManages
 
         private int _maxThreadCount { get; set; }
 
-        private Queue<ICrawlTask> _taskQueue { get; set; }
+        private int _crawlDepth { get; set; }
+
+        private Queue<ICrawlTask> _taskQueue { get; set; } = new Queue<ICrawlTask>();
+
+        private HashSet<string> _accessedUrls { get; set; } = new HashSet<string>();
 
         private object _taskQueueLock { get; } = new object();
 
-        public CrawlTaskManage(int MaxThreadCount)
+        /// <summary>
+        /// 
+        /// </summary>
+        /// <param name="MaxThreadCount">最大线程数</param>
+        /// <param name="crawlDepth">最大抓取深度，如果小于或等于0，则为255</param>
+        public CrawlTaskManage(int MaxThreadCount, int crawlDepth)
         {
             _maxThreadCount = MaxThreadCount;
+
+            _crawlDepth = crawlDepth;
         }
 
         /// <summary>
@@ -33,42 +44,84 @@ namespace Crawler.CrawlTaskManages
 
         public void Start()
         {
-            while (_currentThreadCount > 0) {
+            StartNewTask();
+
+            while (_currentThreadCount > 0)
+            {
                 if (_currentThreadCount < _maxThreadCount && _taskQueue.Count > 0)
                 {
-                    _currentThreadCount++;
                     StartNewTask();
                 }
-                else 
+                else
                 {
                     Thread.Sleep(2000);
                 }
             }
         }
 
+        private void EndTask() {
+            _currentThreadCount--;
+        }
+
         private void StartNewTask() 
         {
-            ICrawlTask task = null;
+            _currentThreadCount++;
+            ExecTask();
+        }
 
-            lock (_taskQueueLock)
+        private void ExecTask() {
+            try
             {
-                if (_taskQueue.Count == 0)
+                ICrawlTask task = null;
+
+                lock (_taskQueueLock)
                 {
-                    _currentThreadCount--;
-                    return;
+                    if (_taskQueue.Count == 0)
+                    {
+                        EndTask();
+                        return;
+                    }
+
+                    task = _taskQueue.Dequeue();
                 }
 
-                task = _taskQueue.Dequeue();
+                Task.Run(() => {
+                    try
+                    {
+                        return task.Run();
+                    }
+                    catch (Exception) 
+                    {
+                        return new ICrawlTask[] { };
+                    }
+                }).ContinueWith((Task<IEnumerable<ICrawlTask>> tasks) => {
+                    try
+                    {
+                        foreach (var t in tasks.Result)
+                        {
+                            if ((_crawlDepth > 0 ? t.Depth <= _crawlDepth : t.Depth <= 255) &&
+                                !_accessedUrls.Contains(t.Url)
+                            )
+                            {
+                                _accessedUrls.Add(t.Url);
+                                _taskQueue.Enqueue(t);
+                            }
+                        }
+                    }
+                    catch
+                    {
+                        EndTask();
+                        return;
+                    }
+
+                    ExecTask();
+                });
             }
-
-            task.Run().ContinueWith((Task<IEnumerable<ICrawlTask>> tasks) => {
-                foreach (var t in tasks.Result)
-                {
-                    _taskQueue.Enqueue(t);
-                }
-
-                StartNewTask();
-            });
+            catch (Exception)
+            {
+                EndTask();
+                return;
+            }
         }
     }
 }

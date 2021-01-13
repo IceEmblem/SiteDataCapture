@@ -41,7 +41,15 @@ namespace Crawler.Models
 
             ConfigRequest(request);
 
-            response = request.GetResponseAsync().Result as HttpWebResponse;
+            try
+            {
+                response = request.GetResponseAsync().Result as HttpWebResponse;
+            }
+            catch (Exception ex)
+            {
+                throw ex;
+            }
+
 
             if (response == null)
             {

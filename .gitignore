@@ -8,3 +8,6 @@
 /src/SiteDataCapture/obj
 /src/Crawler/bin/Debug/netstandard2.0
 /src/SiteDataCapture/bin/Debug/netcoreapp3.0
+/src/Crawler/bin/Release/netstandard2.0
+/src/SiteDataCapture/bin/Release/netcoreapp3.0
+/src/SiteDataCapture/Properties/PublishProfiles

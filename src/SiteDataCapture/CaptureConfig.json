@@ -1,0 +1,25 @@
+﻿{
+  "UseConfigFile": true,
+  "SelectFunc": 1,
+  "Func1": {
+    "CrawlerDepth": 0,
+    "RootUrls": [
+      "http://www.y80s.com/movie/list/6----"
+    ],
+    "NextPageUrlMatchRegexs": [
+      "NotNexPage"
+    ],
+    "ArticleUrlMatchRegexs": [
+      ".*?/movie/[0-9]+$"
+    ],
+    "ArticleInfoMatchRegexs": [
+    ],
+    "ArticleFileMatchRegexs": [
+    ]
+  },
+  "Func2": {
+    "AccessNum": 10,
+    "AccessContinueTime": 120,
+    "DayAccessStartTime": -1
+  }
+}

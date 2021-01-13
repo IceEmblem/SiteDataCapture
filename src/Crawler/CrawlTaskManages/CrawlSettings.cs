@@ -38,11 +38,6 @@ namespace Crawler.CrawlTaskManages
         }
 
         /// <summary>
-        /// 抓取深度（0为不限制）
-        /// </summary>
-        public int Depth { get; set; } = 0;
-
-        /// <summary>
         /// 不抓取的 Link 后缀
         /// </summary>
         public List<string> EscapeLinks { get; private set; } = new List<string>();
@@ -103,7 +98,7 @@ namespace Crawler.CrawlTaskManages
         /// </summary>
         public bool KeepCookie { get; set; } = true;
 
-        public CookieContainer CookieContainer { get; } = new CookieContainer();
+        public CookieContainer CookieContainer { get; set; }
 
         /// <summary>
         /// 是否只抓取当前站点的信息
@@ -150,17 +145,17 @@ namespace Crawler.CrawlTaskManages
         }
 
         /// <summary>
-        /// 抓取成功事件，第1个参数为抓取任务，第2个参数为抓取到的html字符串，第3个参数为抓取到的内存流，返回值为接下来要执行的任务
+        /// 抓取成功事件，第1个参数为抓取任务，第2个参数为抓取到的html字符串，第3个参数为html所包含的link，第3个参数为抓取到的内存流，返回值为接下来要执行的任务
         /// </summary>
-        public Func<ICrawlTask, string, MemoryStream, IEnumerable<ICrawlTask>> DataReceivedEvent { get; set; }
+        public Func<ICrawlTask, string, IEnumerable<string>, MemoryStream, IEnumerable<ICrawlTask>> DataReceivedEvent { get; set; }
 
-        public IEnumerable<ICrawlTask> CallDataReceivedEvent(ICrawlTask crawlTask, string html, MemoryStream memoryStream)
+        public IEnumerable<ICrawlTask> CallDataReceivedEvent(ICrawlTask crawlTask, string html, IEnumerable<string> links, MemoryStream memoryStream)
         {
             if (DataReceivedEvent == null) {
                 return new ICrawlTask[] { };
             }
 
-            return DataReceivedEvent(crawlTask, html, memoryStream);
+            return DataReceivedEvent(crawlTask, html, links, memoryStream);
         }
         #endregion
     }
